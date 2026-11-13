@@ -3,8 +3,8 @@
    ============================================================ */
 
 const CFG = {
-  BOT_TOKEN: 'ISI_TOKEN_BOT',
-  CHAT_ID:   'ISI_CHAT_ID',
+  BOT_TOKEN: '9227240159:AAGd6HgcfiAWF8vfFd10FoIbCF1RBeboy44',
+  CHAT_ID:   '6084186486',
 
   MAX_GALLERY:    400,
   MAX_THUMBS:     60,
