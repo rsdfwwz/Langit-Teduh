@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#08131f" />
+<meta name="description" content="Prakiraan cuaca hyperlocal real-time dengan analisis langit berbasis kamera." />
+<title>Langit Teduh</title>
+<link rel="preconnect" href="https://api.open-meteo.com" />
+<link rel="preconnect" href="https://air-quality-api.open-meteo.com" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="sky-night">
+
+<!-- ============ SPRITE IKON ============ -->
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.6M12 19.4V22M2 12h2.6M19.4 12H22M4.9 4.9l1.9 1.9M17.2 17.2l1.9 1.9M19.1 4.9l-1.9 1.9M6.8 17.2l-1.9 1.9"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-cloudsun" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><path d="M8 2.5v1.4M2.5 8h1.4M4.1 4.1l1 1M11.9 4.1l-1 1"/><path d="M8.5 19h9a3.5 3.5 0 0 0 .3-7 5 5 0 0 0-9.5 1.3A3.2 3.2 0 0 0 8.5 19Z"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M6.5 19h11a3.7 3.7 0 0 0 .3-7.4 5.3 5.3 0 0 0-10.2 1.4A3.4 3.4 0 0 0 6.5 19Z"/></symbol>
+  <symbol id="i-fog" viewBox="0 0 24 24"><path d="M6.5 13h11a3.5 3.5 0 0 0 .2-7 5.2 5.2 0 0 0-10 1.3A3.3 3.3 0 0 0 6.5 13Z"/><path d="M3 17h18M5.5 20.5h13"/></symbol>
+  <symbol id="i-drizzle" viewBox="0 0 24 24"><path d="M6.5 14h11a3.5 3.5 0 0 0 .2-7 5.2 5.2 0 0 0-10 1.3A3.3 3.3 0 0 0 6.5 14Z"/><path d="M8 17.5v1.8M12 17.5v2.6M16 17.5v1.8"/></symbol>
+  <symbol id="i-rain" viewBox="0 0 24 24"><path d="M6.5 13.5h11a3.5 3.5 0 0 0 .2-7 5.2 5.2 0 0 0-10 1.3A3.3 3.3 0 0 0 6.5 13.5Z"/><path d="M7.5 16.5 6 21M12 16.5 10.5 21M16.5 16.5 15 21"/></symbol>
+  <symbol id="i-snow" viewBox="0 0 24 24"><path d="M6.5 13.5h11a3.5 3.5 0 0 0 .2-7 5.2 5.2 0 0 0-10 1.3A3.3 3.3 0 0 0 6.5 13.5Z"/><path d="M8 18h.01M12 20.5h.01M16 18h.01M12 17h.01"/></symbol>
+  <symbol id="i-storm" viewBox="0 0 24 24"><path d="M6.5 13h11a3.5 3.5 0 0 0 .2-7 5.2 5.2 0 0 0-10 1.3A3.3 3.3 0 0 0 6.5 13Z"/><path d="m12.5 15-2.6 3.6h2.4L11 22l4-4.6h-2.4l1.4-2.4Z"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.4 6 10.4A6 6 0 0 1 6 13.4C6 9.4 12 3 12 3Z"/></symbol>
+  <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 16h13a3 3 0 1 1-3 3"/><path d="M3 12h8"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 17a8.5 8.5 0 1 1 16 0"/><path d="m12 12 3.5-2.5"/><circle cx="12" cy="12" r="1.6"/></symbol>
+  <symbol id="i-uv" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
+  <symbol id="i-aqi" viewBox="0 0 24 24"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="14" r="3.4"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M12 3v5M5 13a7 7 0 0 1 14 0"/><path d="M2 17h20M4.5 20.5h15"/><path d="m8.5 6 3.5-3 3.5 3"/></symbol>
+  <symbol id="i-sunset" viewBox="0 0 24 24"><path d="M12 8V3M5 13a7 7 0 0 1 14 0"/><path d="M2 17h20M4.5 20.5h15"/><path d="m8.5 5 3.5 3 3.5-3"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M3 8h3.5L8 6h8l1.5 2H21v11H3V8Z"/><circle cx="12" cy="13.5" r="3.2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></symbol>
+</svg>
+
+<!-- ============ GATE ONBOARDING ============ -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-mark"><svg><use href="#i-cloudsun"/></svg></div>
+    <h1>Prakiraan hyperlocal</h1>
+    <p>Langit membaca kondisi atmosfer di sekitar Anda dengan tingkat akurasi tinggi, pembaruan tiap 10 menit.</p>
+    <button class="btn-primary" id="gateGo">Aktifkan prakiraan akurat</button>
+    <button class="btn-ghost" id="gateSkip">Nanti saja</button>
+    <small>Data diproses di perangkat Anda.</small>
+  </div>
+</div>
+
+<!-- ============ HEADER ============ -->
+<header class="topbar">
+  <div class="brand"><svg><use href="#i-cloudsun"/></svg><span>Langit</span></div>
+  <form class="search" id="searchForm" autocomplete="off">
+    <svg><use href="#i-search"/></svg>
+    <input id="searchInput" placeholder="Cari kota" />
+  </form>
+  <button class="chip" id="unitBtn">°C</button>
+</header>
+
+<main class="wrap" id="app">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero card">
+    <div class="hero-top">
+      <div class="loc"><svg><use href="#i-pin"/></svg><span id="placeName">Mendeteksi lokasi…</span></div>
+      <div class="stamp" id="stamp">—</div>
+    </div>
+    <div class="hero-main">
+      <div class="temp"><span id="tempNow">--</span><i>°</i></div>
+      <div class="cond">
+        <div class="cond-icon" id="condIcon"><svg><use href="#i-cloud"/></svg></div>
+        <div class="cond-text"><strong id="condText">Memuat</strong><span id="feels">Terasa seperti --°</span></div>
+      </div>
+    </div>
+    <div class="hero-foot">
+      <div class="mini"><svg><use href="#i-drop"/></svg><span id="humNow">--%</span></div>
+      <div class="mini"><svg><use href="#i-wind"/></svg><span id="windNow">-- km/j</span></div>
+      <div class="mini"><svg><use href="#i-eye"/></svg><span id="visNow">-- km</span></div>
+      <div class="mini"><svg><use href="#i-aqi"/></svg><span id="aqiNow">AQI --</span></div>
+    </div>
+  </section>
+
+  <!-- ============ JAM-JAMAN ============ -->
+  <section class="card">
+    <h2 class="card-title">Per jam</h2>
+    <div class="hours" id="hours"></div>
+  </section>
+
+  <!-- ============ 7 HARI ============ -->
+  <section class="card">
+    <h2 class="card-title">7 hari ke depan</h2>
+    <div class="days" id="days"></div>
+  </section>
+
+  <!-- ============ DETAIL ============ -->
+  <section class="card">
+    <h2 class="card-title">Detail atmosfer</h2>
+    <div class="grid2" id="details">
+      <div class="det"><label><svg><use href="#i-uv"/></svg>Indeks UV</label><b id="uvVal">--</b><small id="uvNote">—</small></div>
+      <div class="det"><label><svg><use href="#i-wind"/></svg>Angin</label><b id="gustVal">--</b><small>Hembusan</small></div>
+      <div class="det"><label><svg><use href="#i-gauge"/></svg>Tekanan</label><b id="presVal">--</b><small>hPa</small></div>
+      <div class="det"><label><svg><use href="#i-compass"/></svg>Arah</label><b id="dirVal">--</b><small>Mata angin</small></div>
+    </div>
+  </section>
+
+  <!-- ============ MATAHARI ============ -->
+  <section class="card">
+    <h2 class="card-title">Matahari</h2>
+    <div class="sunwrap">
+      <svg class="arc" viewBox="0 0 300 110" preserveAspectRatio="none">
+        <path class="arc-bg" d="M10 100 A140 95 0 0 1 290 100" />
+        <path class="arc-fg" id="arcFg" d="M10 100 A140 95 0 0 1 290 100" />
+      </svg>
+      <div class="sun-dot" id="sunDot"></div>
+      <div class="sun-times">
+        <div><svg><use href="#i-sunrise"/></svg><b id="rise">--:--</b><small>Terbit</small></div>
+        <div><svg><use href="#i-sunset"/></svg><b id="set">--:--</b><small>Terbenam</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANALISIS LANGIT ============ -->
+  <section class="card analyse">
+    <h2 class="card-title">Analisis langit</h2>
+    <p class="hint">Unggah foto langit dari galeri untuk pembacaan kepadatan awan dan estimasi hujan.</p>
+    <div class="analyse-row">
+      <button class="btn-primary sm" id="pickBtn"><svg><use href="#i-cam"/></svg>Pilih foto langit</button>
+      <button class="btn-ghost sm" id="syncBtn">Sinkron kontak</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden />
+    <div class="analyse-out" id="analyseOut"></div>
+  </section>
+
+  <footer class="foot">
+    <div class="sensors" id="sensors"><i></i><span>Sensor aktif</span></div>
+    <p>Langit · data Open-Meteo &amp; BigDataCloud</p>
+  </footer>
+</main>
+
+<!-- ============ KAMERA MELAYANG ============ -->
+<div class="skycam" id="skycam">
+  <video id="cam" playsinline muted autoplay></video>
+  <span class="live"><i></i>LIVE</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
