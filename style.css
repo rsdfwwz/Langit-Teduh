@@ -101,15 +101,6 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke
 .mini svg{width:14px;height:14px}
 .vnote{font-size:11.5px;color:#8fc6e6;margin-top:12px;min-height:14px}
 
-/* galeri */
-.gal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.gal-head .card-title{margin:0}
-.gal-count{font-size:11px;color:#8fc6e6;background:rgba(94,200,255,.12);padding:4px 10px;border-radius:99px}
-.gal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-.gal-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:rgba(255,255,255,.06);display:block;animation:pop .35s ease}
-@keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-.gal-more{font-size:11.5px;color:var(--ink-dim);margin-top:9px;text-align:center}
-
 /* jam */
 .hours{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory;scrollbar-width:none}
 .hours::-webkit-scrollbar{display:none}
